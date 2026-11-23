@@ -139,6 +139,11 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
         {"id": 3, "status": "恢复失败", "pending": True, "abnormal": True,
          "归档来源": "S3_IA/user_clicks_2024", "恢复目标路径": "/data/hot_restore/user_clicks",
          "恢复时间范围": "2024-01-01~2024-06-30", "恢复状态": "失败", "预计文件大小": "28 GB"},
+        # 订单数据集冷恢复：按业务日期 2026-11-18~2026-11-20 从快照恢复，需要先核对快照版本。
+        {"id": 4, "status": "排队中", "pending": True, "abnormal": False,
+         "归档来源": "/snapshots/ods_orders", "目标数据集": "ods_orders",
+         "恢复目标路径": "/data/hot_restore/ods_orders_20261118_20",
+         "恢复时间范围": "2026-11-18~2026-11-20", "恢复状态": "排队中", "预计文件大小": "0 GB"},
     ],
     "dimension_builder": [
         {"id": 1, "status": "已上线", "pending": False, "abnormal": False,
@@ -196,6 +201,7 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
          "合并键": "order_date", "冲突策略": "custom_merge_func", "合并状态": "失败-主键冲突"},
     ],
     "snapshot_creator": [
+        # —— 常规模块示例数据 ——
         {"id": 1, "status": "已完成", "pending": False, "abnormal": False,
          "目标数据集": "ods_orders", "快照时间点": "2026-11-21T00:00:00Z",
          "快照类型": "daily_sealed", "存储路径": "/snapshots/ods_orders/dt=2026-11-21", "文件大小": "4.2 GB"},
@@ -205,6 +211,66 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
         {"id": 3, "status": "创建失败", "pending": True, "abnormal": True,
          "目标数据集": "legacy_raw_logs", "快照时间点": "2026-11-20T00:00:00Z",
          "快照类型": "full", "存储路径": "/snapshots/legacy_raw_logs/full_20261120", "文件大小": ""},
+        # —— 订单数据集快照恢复核对场景（覆盖业务日期 2026-11-18 ~ 2026-11-20）——
+        # S1：值班员最初选中的快照；生成后 part-00003 变为不可读。
+        {"id": 10, "status": "已完成", "pending": False, "abnormal": True,
+         "目标数据集": "ods_orders", "快照时间点": "2026-11-21T00:10:00Z",
+         "快照类型": "full", "存储路径": "/snapshots/ods_orders/v20261121-0010",
+         "文件大小": "4.2 GB", "版本号": "snap-ods_orders-20261121-0010",
+         "覆盖起始业务日期": "2026-11-18", "覆盖截止业务日期": "2026-11-20",
+         "内容校验和": "ck_a1b2c3",
+         "文件清单": [
+             {"文件路径": "/snapshots/ods_orders/v20261121-0010/dt=2026-11-18/part-00001.parquet",
+              "业务日期": "2026-11-18", "可读": True, "文件校验和": "f-18-01"},
+             {"文件路径": "/snapshots/ods_orders/v20261121-0010/dt=2026-11-19/part-00002.parquet",
+              "业务日期": "2026-11-19", "可读": True, "文件校验和": "f-19-02"},
+             {"文件路径": "/snapshots/ods_orders/v20261121-0010/dt=2026-11-20/part-00003.parquet",
+              "业务日期": "2026-11-20", "可读": False, "文件校验和": "f-20-03",
+              "不可读原因": "存储节点返回 500 Internal Error，分片无法读取"},
+         ]},
+        # S2：与 S1 保存相同业务截止点的另一份快照；分区与内容校验和一致，且文件完整。
+        {"id": 11, "status": "已完成", "pending": False, "abnormal": False,
+         "目标数据集": "ods_orders", "快照时间点": "2026-11-21T00:25:00Z",
+         "快照类型": "full", "存储路径": "/snapshots/ods_orders/v20261121-0025",
+         "文件大小": "4.2 GB", "版本号": "snap-ods_orders-20261121-0025",
+         "覆盖起始业务日期": "2026-11-18", "覆盖截止业务日期": "2026-11-20",
+         "内容校验和": "ck_a1b2c3",
+         "文件清单": [
+             {"文件路径": "/snapshots/ods_orders/v20261121-0025/dt=2026-11-18/part-00001.parquet",
+              "业务日期": "2026-11-18", "可读": True, "文件校验和": "f-18-01"},
+             {"文件路径": "/snapshots/ods_orders/v20261121-0025/dt=2026-11-19/part-00002.parquet",
+              "业务日期": "2026-11-19", "可读": True, "文件校验和": "f-19-02"},
+             {"文件路径": "/snapshots/ods_orders/v20261121-0025/dt=2026-11-20/part-00003.parquet",
+              "业务日期": "2026-11-20", "可读": True, "文件校验和": "f-20-03"},
+         ]},
+        # S3：覆盖日期相同但内容不同的对照快照（同业务截止点，内容校验和与逐文件校验和均不同）。
+        {"id": 12, "status": "已完成", "pending": False, "abnormal": False,
+         "目标数据集": "ods_orders", "快照时间点": "2026-11-21T01:05:00Z",
+         "快照类型": "full", "存储路径": "/snapshots/ods_orders/v20261121-0105",
+         "文件大小": "4.3 GB", "版本号": "snap-ods_orders-20261121-0105",
+         "覆盖起始业务日期": "2026-11-18", "覆盖截止业务日期": "2026-11-20",
+         "内容校验和": "ck_d4e5f6",
+         "文件清单": [
+             {"文件路径": "/snapshots/ods_orders/v20261121-0105/dt=2026-11-18/part-00001.parquet",
+              "业务日期": "2026-11-18", "可读": True, "文件校验和": "g-18-11"},
+             {"文件路径": "/snapshots/ods_orders/v20261121-0105/dt=2026-11-19/part-00002.parquet",
+              "业务日期": "2026-11-19", "可读": True, "文件校验和": "g-19-12"},
+             {"文件路径": "/snapshots/ods_orders/v20261121-0105/dt=2026-11-20/part-00003.parquet",
+              "业务日期": "2026-11-20", "可读": True, "文件校验和": "g-20-13"},
+         ]},
+        # S4：覆盖区间存在业务日期缺口（2026-11-19 无任何分片），用于演示缺失范围核对。
+        {"id": 13, "status": "已完成", "pending": False, "abnormal": False,
+         "目标数据集": "ods_orders", "快照时间点": "2026-11-21T01:40:00Z",
+         "快照类型": "full", "存储路径": "/snapshots/ods_orders/v20261121-0140",
+         "文件大小": "2.9 GB", "版本号": "snap-ods_orders-20261121-0140",
+         "覆盖起始业务日期": "2026-11-18", "覆盖截止业务日期": "2026-11-20",
+         "内容校验和": "ck_g7h8i9",
+         "文件清单": [
+             {"文件路径": "/snapshots/ods_orders/v20261121-0140/dt=2026-11-18/part-00001.parquet",
+              "业务日期": "2026-11-18", "可读": True, "文件校验和": "f-18-01"},
+             {"文件路径": "/snapshots/ods_orders/v20261121-0140/dt=2026-11-20/part-00002.parquet",
+              "业务日期": "2026-11-20", "可读": True, "文件校验和": "f-20-03"},
+         ]},
     ],
     "data_lake_audit": [
         {"id": 1, "status": "审计中", "pending": True, "abnormal": False,
